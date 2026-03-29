@@ -33,7 +33,7 @@ export function QuestionForm({ groups, initial, onSave, onCancel }: QuestionForm
         prompt,
         category: category || null,
         difficulty: (difficulty as QuestionCreate["difficulty"]) || null,
-        recommended_group_id: recommendedGroupId || null,
+        recommended_group_id: (recommendedGroupId && recommendedGroupId !== "__none__") ? recommendedGroupId : null,
         recommended_rounds: recommendedRounds,
         tags: tagsStr.split(",").map((t) => t.trim()).filter(Boolean),
       });
@@ -107,7 +107,7 @@ export function QuestionForm({ groups, initial, onSave, onCancel }: QuestionForm
               <SelectValue placeholder="Any group..." />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Any</SelectItem>
+              <SelectItem value="__none__">Any</SelectItem>
               {groups.map((g) => (
                 <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
               ))}

@@ -47,7 +47,7 @@ export default function DashboardPage() {
         body: JSON.stringify({
           topic,
           group_id: group.id,
-          question_id: selectedQuestion || undefined,
+          question_id: (selectedQuestion && selectedQuestion !== "__custom__") ? selectedQuestion : undefined,
           max_rounds: question?.recommended_rounds || (group.phase_config.diverge + group.phase_config.challenge + group.phase_config.converge),
         }),
       });
@@ -108,7 +108,7 @@ export default function DashboardPage() {
                     <SelectValue placeholder="Pick a question..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Custom topic</SelectItem>
+                    <SelectItem value="__custom__">Custom topic</SelectItem>
                     {activeQuestions.map((q) => (
                       <SelectItem key={q.id} value={q.id}>
                         {q.prompt.length > 80 ? q.prompt.slice(0, 80) + "..." : q.prompt}
@@ -133,7 +133,7 @@ export default function DashboardPage() {
                 </Select>
               </div>
             </div>
-            {!selectedQuestion && (
+            {(!selectedQuestion || selectedQuestion === "__custom__") && (
               <Textarea
                 placeholder="Type a custom topic or question..."
                 value={customTopic}
@@ -143,7 +143,7 @@ export default function DashboardPage() {
             )}
             <Button
               onClick={handleLaunch}
-              disabled={launching || !selectedGroup || (!selectedQuestion && !customTopic)}
+              disabled={launching || !selectedGroup || ((!selectedQuestion || selectedQuestion === "__custom__") && !customTopic)}
             >
               <Zap className="mr-1 h-4 w-4" />
               {launching ? "Launching..." : "Launch Session"}
