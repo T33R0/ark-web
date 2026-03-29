@@ -23,7 +23,7 @@ export async function callLLM(
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },
       ],
-      max_tokens: 1024,
+      max_tokens: 4096,
     }),
   });
 
@@ -33,8 +33,11 @@ export async function callLLM(
   }
 
   const data = await response.json();
+  const message = data.choices[0]?.message;
+  // qwen3 uses thinking mode — content may be in `reasoning` field with empty `content`
+  const content = message?.content || message?.reasoning || '';
   return {
-    content: data.choices[0]?.message?.content || '',
+    content,
     tokens_used: data.usage?.total_tokens || 0,
     model,
   };
