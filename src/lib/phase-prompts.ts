@@ -73,7 +73,7 @@ export function buildAgentPrompt(
     }
   }
 
-  prompt += `\n--- YOUR TURN ---\nRespond as ${agent.name}. Stay in character.`;
+  prompt += `\n--- YOUR TURN ---\nRespond as ${agent.name}. Stay in character. Do NOT prefix your response with your name or role — just speak directly.`;
 
   return prompt;
 }
