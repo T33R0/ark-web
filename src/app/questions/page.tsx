@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { QuestionForm } from "@/components/questions/question-form";
 import { Plus, Search, Archive, RotateCcw, Play } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
 
 const DIFF_COLORS: Record<string, "outline" | "info" | "warning" | "destructive"> = {
   easy: "info",
@@ -22,6 +23,8 @@ const DIFF_COLORS: Record<string, "outline" | "info" | "warning" | "destructive"
 
 export default function QuestionsPage() {
   const router = useRouter();
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const [questions, setQuestions] = useState<Question[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [search, setSearch] = useState("");
@@ -89,9 +92,11 @@ export default function QuestionsPage() {
           <h1 className="text-2xl font-bold">Question Bank</h1>
           <p className="text-sm text-neutral-400">{questions.filter(q => !q.archived).length} active questions</p>
         </div>
-        <Button onClick={() => { setEditingQuestion(null); setDialogOpen(true); }}>
-          <Plus className="mr-1 h-4 w-4" /> Add Question
-        </Button>
+        {isAdmin && (
+          <Button onClick={() => { setEditingQuestion(null); setDialogOpen(true); }}>
+            <Plus className="mr-1 h-4 w-4" /> Add Question
+          </Button>
+        )}
       </div>
 
       {/* Filters */}
@@ -157,14 +162,16 @@ export default function QuestionsPage() {
                     )}
                   </div>
                 </div>
-                <div className="flex shrink-0 gap-1">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" title="Launch" onClick={() => handleQuickLaunch(q)}>
-                    <Play className="h-3 w-3" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" title={q.archived ? "Restore" : "Archive"} onClick={() => handleArchive(q.id, !q.archived)}>
-                    {q.archived ? <RotateCcw className="h-3 w-3" /> : <Archive className="h-3 w-3" />}
-                  </Button>
-                </div>
+                {isAdmin && (
+                  <div className="flex shrink-0 gap-1">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" title="Launch" onClick={() => handleQuickLaunch(q)}>
+                      <Play className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" title={q.archived ? "Restore" : "Archive"} onClick={() => handleArchive(q.id, !q.archived)}>
+                      {q.archived ? <RotateCcw className="h-3 w-3" /> : <Archive className="h-3 w-3" />}
+                    </Button>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

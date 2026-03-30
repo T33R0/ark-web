@@ -9,8 +9,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { GroupForm } from "@/components/groups/group-form";
 import { Plus, Users, Pencil, Archive } from "lucide-react";
 import { totalRounds } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
 
 export default function GroupsPage() {
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const [groups, setGroups] = useState<Group[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
@@ -58,9 +61,11 @@ export default function GroupsPage() {
           <h1 className="text-2xl font-bold">Agent Groups</h1>
           <p className="text-sm text-neutral-400">{activeGroups.length} configured panels</p>
         </div>
-        <Button onClick={() => { setEditingGroup(null); setDialogOpen(true); }}>
-          <Plus className="mr-1 h-4 w-4" /> New Group
-        </Button>
+        {isAdmin && (
+          <Button onClick={() => { setEditingGroup(null); setDialogOpen(true); }}>
+            <Plus className="mr-1 h-4 w-4" /> New Group
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -74,14 +79,16 @@ export default function GroupsPage() {
                     <CardDescription className="mt-1">{group.description}</CardDescription>
                   )}
                 </div>
-                <div className="flex gap-1">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditingGroup(group); setDialogOpen(true); }}>
-                    <Pencil className="h-3 w-3" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleArchive(group.id)}>
-                    <Archive className="h-3 w-3" />
-                  </Button>
-                </div>
+                {isAdmin && (
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditingGroup(group); setDialogOpen(true); }}>
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleArchive(group.id)}>
+                      <Archive className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
               </div>
             </CardHeader>
             <CardContent>

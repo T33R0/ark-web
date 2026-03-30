@@ -19,6 +19,7 @@ import {
   Clock,
   MessageSquare,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
 
 const STATUS_VARIANT: Record<string, "success" | "warning" | "info" | "destructive" | "outline" | "secondary"> = {
   running: "warning",
@@ -31,6 +32,8 @@ const STATUS_VARIANT: Record<string, "success" | "warning" | "info" | "destructi
 export default function SessionDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const sessionId = params.id as string;
   const [session, setSession] = useState<Session | null>(null);
   const [stopping, setStopping] = useState(false);
@@ -151,14 +154,16 @@ export default function SessionDetailPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            {session.status === "running" && (
+            {isAdmin && session.status === "running" && (
               <Button variant="destructive" size="sm" onClick={handleStop} disabled={stopping}>
                 <Square className="mr-1 h-3 w-3" /> Stop
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={handleRerun}>
-              <RotateCcw className="mr-1 h-3 w-3" /> Re-run
-            </Button>
+            {isAdmin && (
+              <Button variant="outline" size="sm" onClick={handleRerun}>
+                <RotateCcw className="mr-1 h-3 w-3" /> Re-run
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={handleCopyTranscript}>
               <Copy className="mr-1 h-3 w-3" /> Copy
             </Button>

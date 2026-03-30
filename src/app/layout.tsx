@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/sidebar";
 import { NotificationHandler } from "@/components/notifications";
+import { AuthProvider } from "@/lib/auth-context";
+import { AuthShell } from "@/components/auth/auth-shell";
 
 export const metadata: Metadata = {
   title: "Ark — Multi-Agent Discussion Platform",
@@ -28,13 +30,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
       <body className="bg-neutral-950 text-neutral-50 antialiased">
-        <div className="flex h-screen">
-          <Sidebar />
-          <main className="flex-1 overflow-auto pt-14 md:pt-0">
-            {children}
-          </main>
-          <NotificationHandler />
-        </div>
+        <AuthProvider>
+          <AuthShell>
+            <div className="flex h-screen">
+              <Sidebar />
+              <main className="flex-1 overflow-auto pt-14 md:pt-0">
+                {children}
+              </main>
+              <NotificationHandler />
+            </div>
+          </AuthShell>
+        </AuthProvider>
       </body>
     </html>
   );

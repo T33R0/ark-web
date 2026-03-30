@@ -10,9 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { SessionCard } from "@/components/sessions/session-card";
 import { MessageSquare, HelpCircle, Users, Zap, Play, Plus } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const [sessions, setSessions] = useState<Session[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -87,68 +90,70 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Quick Launch */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Play className="h-4 w-4 text-green-400" />
-            Quick Launch
-          </CardTitle>
-          <CardDescription>Start a new discussion session</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-xs text-neutral-400">Question (or type custom below)</label>
-                <Select value={selectedQuestion} onValueChange={(v) => { setSelectedQuestion(v); setCustomTopic(""); }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pick a question..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__custom__">Custom topic</SelectItem>
-                    {activeQuestions.map((q) => (
-                      <SelectItem key={q.id} value={q.id}>
-                        {q.prompt.length > 80 ? q.prompt.slice(0, 80) + "..." : q.prompt}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+      {/* Quick Launch (admin only) */}
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Play className="h-4 w-4 text-green-400" />
+              Quick Launch
+            </CardTitle>
+            <CardDescription>Start a new discussion session</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs text-neutral-400">Question (or type custom below)</label>
+                  <Select value={selectedQuestion} onValueChange={(v) => { setSelectedQuestion(v); setCustomTopic(""); }}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pick a question..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__custom__">Custom topic</SelectItem>
+                      {activeQuestions.map((q) => (
+                        <SelectItem key={q.id} value={q.id}>
+                          {q.prompt.length > 80 ? q.prompt.slice(0, 80) + "..." : q.prompt}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-neutral-400">Group</label>
+                  <Select value={selectedGroup} onValueChange={setSelectedGroup}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pick a group..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {groups.map((g) => (
+                        <SelectItem key={g.id} value={g.id}>
+                          {g.name} ({g.agents.length} agents)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div>
-                <label className="mb-1 block text-xs text-neutral-400">Group</label>
-                <Select value={selectedGroup} onValueChange={setSelectedGroup}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pick a group..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {groups.map((g) => (
-                      <SelectItem key={g.id} value={g.id}>
-                        {g.name} ({g.agents.length} agents)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {(!selectedQuestion || selectedQuestion === "__custom__") && (
+                <Textarea
+                  placeholder="Type a custom topic or question..."
+                  value={customTopic}
+                  onChange={(e) => setCustomTopic(e.target.value)}
+                  rows={2}
+                />
+              )}
+              <Button
+                onClick={handleLaunch}
+                disabled={launching || !selectedGroup || ((!selectedQuestion || selectedQuestion === "__custom__") && !customTopic)}
+              >
+                <Zap className="mr-1 h-4 w-4" />
+                {launching ? "Launching..." : "Launch Session"}
+              </Button>
             </div>
-            {(!selectedQuestion || selectedQuestion === "__custom__") && (
-              <Textarea
-                placeholder="Type a custom topic or question..."
-                value={customTopic}
-                onChange={(e) => setCustomTopic(e.target.value)}
-                rows={2}
-              />
-            )}
-            <Button
-              onClick={handleLaunch}
-              disabled={launching || !selectedGroup || ((!selectedQuestion || selectedQuestion === "__custom__") && !customTopic)}
-            >
-              <Zap className="mr-1 h-4 w-4" />
-              {launching ? "Launching..." : "Launch Session"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Active Sessions */}
       {activeSessions.length > 0 && (

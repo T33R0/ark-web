@@ -12,7 +12,9 @@ import {
   Zap,
   Menu,
   X,
+  LogOut,
 } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -23,6 +25,7 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { role, logout } = useAuth();
   const [open, setOpen] = useState(false);
 
   // Close on route change
@@ -89,11 +92,18 @@ export function Sidebar() {
             );
           })}
         </nav>
-        <div className="border-t border-neutral-800 p-3">
+        <div className="border-t border-neutral-800 p-3 space-y-2">
           <div className="rounded-lg bg-neutral-900 p-3">
             <p className="text-xs text-neutral-500">Powered by</p>
             <p className="text-xs font-medium text-neutral-300">Ollama + Ark Engine</p>
           </div>
+          <button
+            onClick={logout}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-neutral-500 transition-colors hover:bg-neutral-900 hover:text-neutral-300"
+          >
+            <LogOut className="h-3 w-3" />
+            {role === "spectator" ? "Exit spectator" : "Log out"}
+          </button>
         </div>
       </div>
     </>
