@@ -1,4 +1,9 @@
-// LLM provider — routes to Ollama, OpenAI, or Anthropic based on agent config
+// LLM provider — routes to Ollama, OpenAI, or Claude Max (via CLI)
+
+import { execSync } from 'child_process';
+import { writeFileSync, unlinkSync } from 'fs';
+import { resolve } from 'path';
+import { tmpdir } from 'os';
 
 export interface LLMResponse {
   content: string;
@@ -13,7 +18,7 @@ export async function callLLM(
   userMessage: string
 ): Promise<LLMResponse> {
   if (provider === 'anthropic') {
-    return callAnthropic(model, systemPrompt, userMessage);
+    return callClaudeMax(model, systemPrompt, userMessage);
   }
   return callOpenAICompatible(provider, model, systemPrompt, userMessage);
 }
@@ -56,42 +61,50 @@ async function callOpenAICompatible(
   };
 }
 
-// Anthropic uses Messages API via AI Gateway (attached to Claude Max plan — no separate API key)
-async function callAnthropic(
+/**
+ * Call Claude via `claude -p` CLI — uses Claude Max plan directly.
+ * Zero API keys needed. Runs through the local Claude CLI binary.
+ * Same pattern used by Telegram poller, Discord bot, and all local Conn processes.
+ */
+function callClaudeMax(
   model: string,
   systemPrompt: string,
   userMessage: string
-): Promise<LLMResponse> {
-  const apiKey = process.env.AI_GATEWAY_API_KEY;
-  const baseUrl = process.env.AI_GATEWAY_URL || 'https://api.anthropic.com';
-  if (!apiKey) {
-    throw new Error('AI_GATEWAY_API_KEY not set — cannot use anthropic provider. This routes through Claude Max plan.');
-  }
+): LLMResponse {
+  const prompt = `${systemPrompt}\n\n---\n\n${userMessage}`;
+  const tmpFile = resolve(tmpdir(), `ark-llm-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`);
 
-  const response = await fetch(`${baseUrl}/v1/messages`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
+  try {
+    writeFileSync(tmpFile, prompt);
+
+    // --tools "" prevents loading MCP servers and CLAUDE.md
+    // cwd=/tmp avoids loading project-level configs
+    const raw = execSync(
+      `cat "${tmpFile}" | claude -p --output-format json --model ${model} --tools ""`,
+      {
+        cwd: tmpdir(),
+        timeout: 120000, // 2 min per agent turn
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }
+    );
+
+    // Parse JSON output from claude CLI
+    const parsed = JSON.parse(raw);
+    const usage = parsed.usage || {};
+    const tokens_used = (usage.input_tokens || 0) + (usage.output_tokens || 0);
+
+    return {
+      content: parsed.result || '',
+      tokens_used,
       model,
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userMessage }],
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Anthropic API error (${model}): ${response.status} ${error}`);
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    throw new Error(`Claude CLI error (${model}): ${message.substring(0, 300)}`);
+  } finally {
+    try { unlinkSync(tmpFile); } catch {}
   }
-
-  const data = await response.json();
-  const content = data.content?.[0]?.text || '';
-  const tokens_used = (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0);
-  return { content, tokens_used, model };
 }
 
 function getBaseUrl(provider: string): string {

@@ -216,7 +216,7 @@ async function main() {
   console.log(`\n⚡ Ark Runner started`);
   console.log(`  Supabase:   ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
   console.log(`  Ollama:     ${OLLAMA_BASE}`);
-  console.log(`  Anthropic:  ${process.env.ANTHROPIC_API_KEY ? 'configured' : 'not set'}`);
+  console.log(`  Claude Max: via claude -p CLI (no API key)`);
   console.log(`  Polling every ${POLL_INTERVAL / 1000}s\n`);
 
   while (true) {
