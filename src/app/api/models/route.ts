@@ -11,9 +11,10 @@ export async function GET() {
     .single();
 
   if (data?.value) {
-    try {
-      return NextResponse.json(JSON.parse(data.value));
-    } catch { /* fall through */ }
+    const models = typeof data.value === "string" ? JSON.parse(data.value) : data.value;
+    if (Array.isArray(models) && models.length > 0) {
+      return NextResponse.json(models);
+    }
   }
 
   return NextResponse.json(["qwen3:14b"]);

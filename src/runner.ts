@@ -227,7 +227,7 @@ async function syncOllamaModels() {
 
     await db.from('conn_state').upsert({
       key: 'ark_ollama_models',
-      value: JSON.stringify(models),
+      value: models,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'key' });
 
