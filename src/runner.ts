@@ -223,7 +223,7 @@ async function syncOllamaModels() {
     const data = await res.json();
     const models: string[] = (data.models || [])
       .map((m: { name: string }) => m.name)
-      .filter((n: string) => !n.startsWith('nomic-embed'));
+      .filter((n: string) => !n.startsWith('nomic-embed') && !n.startsWith('conn'));
 
     await db.from('conn_state').upsert({
       key: 'ark_ollama_models',
