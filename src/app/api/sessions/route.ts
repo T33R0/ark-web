@@ -6,6 +6,7 @@ export async function GET() {
   const { data, error } = await db
     .from("ark_sessions")
     .select("*")
+    .neq("source", "war-room")
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
