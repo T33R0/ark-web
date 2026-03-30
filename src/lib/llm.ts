@@ -3,7 +3,16 @@
 import { execSync } from 'child_process';
 import { writeFileSync, unlinkSync } from 'fs';
 import { resolve } from 'path';
-import { tmpdir } from 'os';
+import { tmpdir, homedir } from 'os';
+
+// Resolve claude binary path at module load (same pattern as claude-runner.mjs)
+let CLAUDE_BIN = 'claude';
+try {
+  CLAUDE_BIN = execSync('which claude', { encoding: 'utf-8', timeout: 5000 }).trim();
+} catch {
+  const fallback = resolve(homedir(), '.local/bin/claude');
+  try { execSync(`test -x "${fallback}"`, { timeout: 2000 }); CLAUDE_BIN = fallback; } catch {}
+}
 
 export interface LLMResponse {
   content: string;
@@ -80,7 +89,7 @@ function callClaudeMax(
     // --tools "" prevents loading MCP servers and CLAUDE.md
     // cwd=/tmp avoids loading project-level configs
     const raw = execSync(
-      `cat "${tmpFile}" | claude -p --output-format json --model ${model} --tools ""`,
+      `cat "${tmpFile}" | "${CLAUDE_BIN}" -p --output-format json --model ${model} --tools ""`,
       {
         cwd: tmpdir(),
         timeout: 120000, // 2 min per agent turn
