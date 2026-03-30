@@ -210,6 +210,34 @@ async function runSession(sessionId: string): Promise<void> {
   }
 }
 
+// ── Ollama model sync ──
+
+const MODEL_SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
+let lastModelSync = 0;
+
+async function syncOllamaModels() {
+  try {
+    const baseUrl = OLLAMA_BASE.replace(/\/v1\/?$/, '');
+    const res = await fetch(`${baseUrl}/api/tags`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const models: string[] = (data.models || [])
+      .map((m: { name: string }) => m.name)
+      .filter((n: string) => !n.startsWith('nomic-embed'));
+
+    await db.from('conn_state').upsert({
+      key: 'ark_ollama_models',
+      value: JSON.stringify(models),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'key' });
+
+    console.log(`  Models synced: ${models.join(', ')}`);
+    lastModelSync = Date.now();
+  } catch (err) {
+    console.error('Model sync error:', err);
+  }
+}
+
 // ── Main loop ──
 
 async function main() {
@@ -218,6 +246,8 @@ async function main() {
   console.log(`  Ollama:     ${OLLAMA_BASE}`);
   console.log(`  Claude Max: via claude -p CLI (no API key)`);
   console.log(`  Polling every ${POLL_INTERVAL / 1000}s\n`);
+
+  await syncOllamaModels();
 
   while (true) {
     try {
@@ -263,6 +293,11 @@ async function main() {
       }
     } catch (err) {
       console.error('Poll error:', err);
+    }
+
+    // Periodic model sync
+    if (Date.now() - lastModelSync > MODEL_SYNC_INTERVAL) {
+      await syncOllamaModels();
     }
 
     await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
