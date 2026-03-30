@@ -86,31 +86,13 @@ function buildPrompt(agent: Agent, allAgents: Agent[], topic: string, phase: str
   return prompt;
 }
 
-// ── LLM call ──
+// ── LLM call (routes to provider based on agent config) ──
 
-async function callLLM(model: string, systemPrompt: string, userMessage: string): Promise<{ content: string; tokens: number }> {
-  const res = await fetch(`${OLLAMA_BASE}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage },
-      ],
-      max_tokens: 4096,
-    }),
-  });
+import { callLLM as callLLMLib } from './lib/llm.js';
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`LLM error: ${res.status} ${err}`);
-  }
-
-  const data = await res.json();
-  const message = data.choices[0]?.message;
-  const content = message?.content || message?.reasoning || '';
-  return { content, tokens: data.usage?.total_tokens || 0 };
+async function callLLM(provider: string, model: string, systemPrompt: string, userMessage: string): Promise<{ content: string; tokens: number }> {
+  const result = await callLLMLib(provider, model, systemPrompt, userMessage);
+  return { content: result.content, tokens: result.tokens_used };
 }
 
 // ── Session runner ──
@@ -201,7 +183,7 @@ async function runSession(sessionId: string): Promise<void> {
         console.log(`  Round ${round}/${maxRounds} [${phase}] → ${agent.name} (${agent.role})`);
 
         const prompt = buildPrompt(agent, agents, topic, phase, history);
-        const response = await callLLM(agent.model, prompt, `Round ${round}, Phase: ${phase}. Respond as ${agent.name}.`);
+        const response = await callLLM(agent.provider || 'ollama', agent.model, prompt, `Round ${round}, Phase: ${phase}. Respond as ${agent.name}.`);
 
         await db.from('ark_messages').insert({
           session_id: sessionId,
@@ -232,8 +214,9 @@ async function runSession(sessionId: string): Promise<void> {
 
 async function main() {
   console.log(`\n⚡ Ark Runner started`);
-  console.log(`  Supabase: ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
-  console.log(`  Ollama:   ${OLLAMA_BASE}`);
+  console.log(`  Supabase:   ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
+  console.log(`  Ollama:     ${OLLAMA_BASE}`);
+  console.log(`  Anthropic:  ${process.env.ANTHROPIC_API_KEY ? 'configured' : 'not set'}`);
   console.log(`  Polling every ${POLL_INTERVAL / 1000}s\n`);
 
   while (true) {

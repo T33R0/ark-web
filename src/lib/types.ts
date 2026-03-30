@@ -3,7 +3,7 @@ export interface Agent {
   role: string; // e.g. "proposer", "adversary", "synthesizer"
   soul: string; // personality/system prompt
   model: string; // e.g. "qwen3:14b"
-  provider: 'ollama' | 'openai';
+  provider: 'ollama' | 'openai' | 'anthropic';
   color?: string; // hex color for UI
 }
 
