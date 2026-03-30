@@ -56,18 +56,19 @@ async function callOpenAICompatible(
   };
 }
 
-// Anthropic uses Messages API (different format from OpenAI)
+// Anthropic uses Messages API via AI Gateway (attached to Claude Max plan — no separate API key)
 async function callAnthropic(
   model: string,
   systemPrompt: string,
   userMessage: string
 ): Promise<LLMResponse> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.AI_GATEWAY_API_KEY;
+  const baseUrl = process.env.AI_GATEWAY_URL || 'https://api.anthropic.com';
   if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY not set — cannot use anthropic provider');
+    throw new Error('AI_GATEWAY_API_KEY not set — cannot use anthropic provider. This routes through Claude Max plan.');
   }
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const response = await fetch(`${baseUrl}/v1/messages`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
