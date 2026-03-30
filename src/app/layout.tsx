@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/sidebar";
+import { NotificationHandler } from "@/components/notifications";
 
 export const metadata: Metadata = {
   title: "Ark — Multi-Agent Discussion Platform",
@@ -32,6 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="flex-1 overflow-auto pt-14 md:pt-0">
             {children}
           </main>
+          <NotificationHandler />
         </div>
       </body>
     </html>

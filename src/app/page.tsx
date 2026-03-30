@@ -53,9 +53,7 @@ export default function DashboardPage() {
       });
       const session = await res.json();
 
-      // Start the session
-      fetch(`/api/sessions/${session.id}/run`, { method: "POST" });
-
+      // Session created as 'pending' — local runner picks it up
       router.push(`/sessions/${session.id}`);
     } finally {
       setLaunching(false);
