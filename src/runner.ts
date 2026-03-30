@@ -135,7 +135,18 @@ async function runSession(sessionId: string): Promise<void> {
     return;
   }
 
-  await db.from('ark_sessions').update({ status: 'running', started_at: session.started_at || new Date().toISOString() }).eq('id', sessionId);
+  // Atomically claim the session — only proceed if we're the one who flipped it
+  const { data: claimed } = await db
+    .from('ark_sessions')
+    .update({ status: 'running', started_at: session.started_at || new Date().toISOString() })
+    .eq('id', sessionId)
+    .in('status', ['pending', 'running']) // Allow claiming pending or resuming stuck
+    .select('id');
+
+  if (!claimed || claimed.length === 0) {
+    console.log(`  Session already claimed by another runner, skipping`);
+    return;
+  }
 
   // Update question run count
   if (session.question_id) {
