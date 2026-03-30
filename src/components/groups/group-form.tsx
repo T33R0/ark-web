@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Agent, GroupCreate, PhaseConfig } from "@/lib/types";
 import { AGENT_COLORS } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,11 @@ const DEFAULT_AGENT: Agent = {
 export function GroupForm({ initial, onSave, onCancel }: GroupFormProps) {
   const [name, setName] = useState(initial?.name || "");
   const [description, setDescription] = useState(initial?.description || "");
+  const [availableModels, setAvailableModels] = useState<string[]>(["qwen3:14b"]);
+
+  useEffect(() => {
+    fetch("/api/models").then((r) => r.json()).then(setAvailableModels);
+  }, []);
   const [agents, setAgents] = useState<Agent[]>(
     initial?.agents?.length ? initial.agents : [{ ...DEFAULT_AGENT, color: AGENT_COLORS[0] }]
   );
@@ -137,19 +142,27 @@ export function GroupForm({ initial, onSave, onCancel }: GroupFormProps) {
                   </div>
                   <div>
                     <Label className="text-xs">Provider</Label>
-                    <Select value={agent.provider} onValueChange={(v) => updateAgent(i, "provider", v)}>
+                    <Select value="ollama" onValueChange={(v) => updateAgent(i, "provider", v)}>
                       <SelectTrigger className="mt-1">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="ollama">Ollama</SelectItem>
-                        <SelectItem value="openai">OpenAI-compatible</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div>
                     <Label className="text-xs">Model</Label>
-                    <Input className="mt-1" value={agent.model} onChange={(e) => updateAgent(i, "model", e.target.value)} placeholder="qwen3:14b" />
+                    <Select value={agent.model} onValueChange={(v) => updateAgent(i, "model", v)}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Select model..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableModels.map((m) => (
+                          <SelectItem key={m} value={m}>{m}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <div className="mt-3">
