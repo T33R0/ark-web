@@ -25,8 +25,48 @@ export const supabase = new Proxy({} as SupabaseClient, {
   },
 });
 
+const ALLOWED_TABLES = new Set([
+    "ark_groups",
+    "ark_sessions",
+    "ark_questions",
+    "ark_messages",
+    "conn_state",
+    "conn_task_queue",
+]);
+
+const ALLOWED_RPCS = new Set<string>([]);
+
+function createRestrictedClient(client: SupabaseClient): SupabaseClient {
+    return new Proxy(client, {
+        get(target, prop, receiver) {
+            if (prop === "from") {
+                return (table: string) => {
+                    if (!ALLOWED_TABLES.has(table)) {
+                        throw new Error(
+                            `[ARK GUARD] Access denied: table "${table}" is not whitelisted.`
+                        );
+                    }
+                    return target.from(table);
+                };
+            }
+            if (prop === "rpc") {
+                return (fn: string, ...args: unknown[]) => {
+                    if (!ALLOWED_RPCS.has(fn)) {
+                        throw new Error(
+                            `[ARK GUARD] Access denied: RPC "${fn}" is not whitelisted.`
+                        );
+                    }
+                    return target.rpc(fn, ...args);
+                };
+            }
+            return Reflect.get(target, prop, receiver);
+        },
+    }) as SupabaseClient;
+}
+
 // Server-side (for writes via API routes)
 export function createServerClient(): SupabaseClient {
   const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-  return createClient(getUrl(), serviceRoleKey);
+  const raw = createClient(getUrl(), serviceRoleKey);
+  return createRestrictedClient(raw);
 }
