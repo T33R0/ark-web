@@ -19,9 +19,7 @@ Keep your response focused and under 200 words.`;
       return `${baseContext}
 
 PHASE: CHALLENGE
-You must directly engage with specific claims made by other agents. Reference their names and what they said. Explain why their position is wrong, incomplete, or naive — OR strengthen it with evidence they missed. No new topics — only critique, counterargument, defense, and refinement of existing positions.
-
-Be specific. Quote or paraphrase what you're responding to. Don't be polite about it — be rigorous.
+You MUST directly engage with a specific claim from another agent. Reference the agent by name within your response. Then explain precisely why it's wrong, incomplete, or naive — OR why it's stronger than others realize. You MUST ALSO propose a counter-solution: "Instead of X, we should do Y because Z." Don't just poke holes — offer a better path. Do NOT simply restate your own diverge-phase position. Do NOT introduce entirely new topics. If you don't reference another agent by name AND propose a counter-approach, you have failed this round.
 
 Keep your response focused and under 200 words.`;
 
@@ -41,7 +39,7 @@ Be definitive. Take a stand. Under 250 words.`;
       return `${baseContext}
 
 PHASE: CONVERGE
-The discussion is concluding. State your final position, incorporating what you learned from the challenges. What did you change your mind about? What do you still believe despite pushback? Be specific about what swayed you (or didn't).
+State your final position after hearing all arguments. What changed your mind? What do you still believe despite pushback? What is the single most important thing this group should do? CRITICAL: Your conclusion MUST be different from at least one other agent's final position. If you find yourself agreeing with everyone, you're converging too soon — defend the position nobody else is defending. Real convergence means some ideas WIN and others LOSE, not everyone agreeing.
 
 Keep your response focused and under 200 words.`;
 
@@ -73,7 +71,7 @@ export function buildAgentPrompt(
     }
   }
 
-  prompt += `\n--- YOUR TURN ---\nRespond as ${agent.name}. Stay in character. Do NOT prefix your response with your name or role — just speak directly.`;
+  prompt += `\n--- YOUR TURN ---\nRespond as ${agent.name}. Stay in character. Do NOT prefix your response with your name. Do NOT include meta-commentary about the discussion format. CRITICAL: Do NOT start your response the same way you started a previous response. Vary your opening, structure, and approach each round. Just speak your position directly.`;
 
   return prompt;
 }

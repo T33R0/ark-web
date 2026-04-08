@@ -87,6 +87,7 @@ export async function runSession(sessionId: string): Promise<void> {
           round,
           phase,
           content: response.content,
+          thinking: response.thinking || null,
           tokens_used: response.tokens_used,
           model: response.model,
         });

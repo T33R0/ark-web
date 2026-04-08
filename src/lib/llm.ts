@@ -16,6 +16,7 @@ try {
 
 export interface LLMResponse {
   content: string;
+  thinking: string | null;
   tokens_used: number;
   model: string;
 }
@@ -33,48 +34,29 @@ export async function callLLM(
 }
 
 /**
- * Strip untagged thinking that Qwen3.5 leaks without <think> tags.
- * Detects reasoning preamble patterns and extracts the actual response.
+ * Separate thinking from content — preserve both instead of stripping.
+ * Thinking is stored in a separate column on ark_messages.
  */
-function stripUntaggedThinking(content: string): string {
-  if (!content) return content;
+function separateThinking(raw: string): { thinking: string | null; content: string } {
+  if (!raw) return { thinking: null, content: '' };
 
-  // Pattern 1: Content starts with reasoning markers then transitions to actual response
-  // e.g. "Let me think about this...\n\nOkay, here's my response..."
-  const thinkingPrefixes = /^(?:(?:Let me|I need to|I'll|I should|First,? (?:let me|I'll|I need)|Okay,? (?:let me|so)|Hmm,?|Well,?|Alright,?)\s+(?:think|analyze|consider|break|reason|evaluate|assess|review|examine|process|work through|figure out|look at)[\s\S]*?\n\n)/i;
-  const stripped = content.replace(thinkingPrefixes, '');
-  if (stripped && stripped.length > 20) content = stripped;
-
-  // Pattern 2: Numbered reasoning steps followed by actual response
-  // e.g. "1. The topic is X\n2. Consider Y\n3. Therefore Z\n\nMy actual response..."
-  const numberedReasoning = /^(?:\d+\.\s+.+\n){2,}(?:\n)+/;
-  const afterNumbered = content.replace(numberedReasoning, '');
-  if (afterNumbered && afterNumbered.length > 20 && afterNumbered.length < content.length * 0.85) {
-    content = afterNumbered;
+  // Handle explicit <think> tags
+  const thinkMatch = raw.match(/<think>([\s\S]*?)<\/think>\s*([\s\S]*)/);
+  if (thinkMatch) {
+    return {
+      thinking: thinkMatch[1].trim() || null,
+      content: thinkMatch[2].trim(),
+    };
   }
 
-  // Pattern 3: "**Thinking:**" or "**Analysis:**" header blocks
-  content = content.replace(/^\*\*(?:Thinking|Analysis|Reasoning|Internal|Chain of thought|Planning|Assessment)\b[^*]*\*\*[:\s]*[\s\S]*?\n\n/i, '');
-
-  // Pattern 4: Lines that are clearly meta-reasoning (not speaking in character)
-  // Remove leading lines that reference "the prompt", "the question", "my role", "I need to respond"
-  const lines = content.split('\n');
-  let startIdx = 0;
-  for (let i = 0; i < lines.length && i < 5; i++) {
-    const line = lines[i].trim();
-    if (!line) { startIdx = i + 1; continue; }
-    if (/^(?:The (?:prompt|question|topic|user)|I (?:need to|should|must|will) (?:respond|answer|address|consider)|My role (?:is|here)|As (?:a |the )?(?:\w+ )?(?:agent|participant)|In this (?:phase|round|discussion))/i.test(line)) {
-      startIdx = i + 1;
-    } else {
-      break;
-    }
-  }
-  if (startIdx > 0) {
-    const remaining = lines.slice(startIdx).join('\n').trim();
-    if (remaining.length > 20) content = remaining;
+  // Handle unclosed <think> tag (model didn't close it)
+  const unclosedMatch = raw.match(/^<think>([\s\S]*)$/);
+  if (unclosedMatch) {
+    return { thinking: unclosedMatch[1].trim(), content: '' };
   }
 
-  return content.trim();
+  // No think tags — return as-is
+  return { thinking: null, content: raw };
 }
 
 // Ollama and OpenAI both use OpenAI-compatible chat/completions format
@@ -86,12 +68,9 @@ async function callOpenAICompatible(
 ): Promise<LLMResponse> {
   const baseUrl = getBaseUrl(provider);
 
-  // Qwen3.5 thinking models: disable thinking to get clean content output
-  // /no_think tag prevents the model from generating reasoning tokens
+  // Qwen3.5 thinking models: disable thinking at request level to get clean content
+  // The model can't manage its thinking budget and produces infinite reasoning otherwise
   const isThinkingModel = model.includes('Qwen3.5') || model.includes('qwen3.5');
-  const finalSystemPrompt = isThinkingModel
-    ? `/no_think\n${systemPrompt}`
-    : systemPrompt;
 
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
@@ -99,13 +78,14 @@ async function callOpenAICompatible(
     body: JSON.stringify({
       model,
       messages: [
-        { role: 'system', content: finalSystemPrompt },
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },
       ],
-      max_tokens: 512,
+      max_tokens: 800,
       temperature: 0.7,
-      repetition_penalty: 1.1,
-      ...(isThinkingModel ? { enable_thinking: false } : {}),
+      repetition_penalty: 1.05,
+      // Disable thinking at request level for thinking models
+      ...(isThinkingModel ? { chat_template_kwargs: { enable_thinking: false } } : {}),
     }),
   });
 
@@ -116,23 +96,17 @@ async function callOpenAICompatible(
 
   const data = await response.json();
   const message = data.choices[0]?.message;
-  // Prefer content over reasoning — reasoning is internal chain-of-thought
-  let content = (message?.content || '').trim();
-  // Strip <think>...</think> tags from /no_think responses (handles unclosed tags too)
-  content = content.replace(/<think>[\s\S]*?<\/think>\s*/g, '').replace(/<think>[\s\S]*$/g, '').trim();
-  // Qwen3.5 leaks untagged thinking ~40% of the time — heuristic cleanup
-  if (isThinkingModel) {
-    content = stripUntaggedThinking(content);
-  }
-  if (!content && message?.reasoning) {
-    // Extract just the final answer if thinking leaked into reasoning only
-    const reasoning = message.reasoning as string;
-    const lastParagraph = reasoning.split('\n\n').filter((p: string) => p.trim()).pop() || '';
-    content = lastParagraph.replace(/<think>[\s\S]*?<\/think>\s*/g, '').replace(/<think>[\s\S]*$/g, '').trim();
-    if (isThinkingModel) content = stripUntaggedThinking(content);
-  }
+  const rawContent = (message?.content || '').trim();
+  const apiReasoning = (message?.reasoning || '').trim();
+
+  // Separate any leaked thinking from content (preserve, don't strip)
+  const { thinking: inlineThinking, content } = separateThinking(rawContent);
+  // Merge: prefer inline thinking, fall back to API reasoning field
+  const thinking = inlineThinking || apiReasoning || null;
+
   return {
     content,
+    thinking,
     tokens_used: data.usage?.total_tokens || 0,
     model,
   };
@@ -173,6 +147,7 @@ function callClaudeMax(
 
     return {
       content: parsed.result || '',
+      thinking: null,
       tokens_used,
       model,
     };

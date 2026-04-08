@@ -70,10 +70,13 @@ function buildPrompt(agent: Agent, allAgents: Agent[], topic: string, phase: str
   const phaseInstructions = getPhaseInstructions(phase, agent, allAgents);
   let prompt = `${agent.soul}\n\n---\n\n${phaseInstructions}\n\n---\n\nTOPIC: ${topic}`;
 
-  if (history.length > 0) {
+  // Limit history to last 12 messages to prevent context overload degradation on small models
+  const recentHistory = history.slice(-12);
+
+  if (recentHistory.length > 0) {
     prompt += '\n\n--- CONVERSATION SO FAR ---\n';
     let currentRound = 0;
-    for (const msg of history) {
+    for (const msg of recentHistory) {
       if (msg.round !== currentRound) {
         currentRound = msg.round;
         prompt += `\n[Round ${currentRound}${msg.phase ? ` - ${msg.phase.toUpperCase()}` : ''}]\n`;
@@ -82,7 +85,7 @@ function buildPrompt(agent: Agent, allAgents: Agent[], topic: string, phase: str
     }
   }
 
-  prompt += `\n--- YOUR TURN ---\nRespond as ${agent.name}. Stay in character. Do NOT prefix your response with your name or role — just speak directly.`;
+  prompt += `\n--- YOUR TURN ---\nRespond as ${agent.name}. Stay in character. Do NOT prefix your response with your name or role — just speak directly. Do NOT include analysis, planning steps, or internal reasoning. Just speak your position directly.`;
   return prompt;
 }
 
@@ -90,9 +93,9 @@ function buildPrompt(agent: Agent, allAgents: Agent[], topic: string, phase: str
 
 import { callLLM as callLLMLib } from './lib/llm.js';
 
-async function callLLM(provider: string, model: string, systemPrompt: string, userMessage: string): Promise<{ content: string; tokens: number }> {
+async function callLLM(provider: string, model: string, systemPrompt: string, userMessage: string): Promise<{ content: string; thinking: string | null; tokens: number }> {
   const result = await callLLMLib(provider, model, systemPrompt, userMessage);
-  return { content: result.content, tokens: result.tokens_used };
+  return { content: result.content, thinking: result.thinking, tokens: result.tokens_used };
 }
 
 // ── Session runner ──
@@ -192,12 +195,61 @@ async function runSession(sessionId: string): Promise<void> {
           round,
           phase,
           content: response.content,
+          thinking: response.thinking || null,
           tokens_used: response.tokens,
           model: agent.model,
         });
 
         history.push({ agent_name: agent.name, content: response.content, round, phase });
+
+        // GPU cooldown — prevent Metal crashes from sustained back-to-back inference
+        await new Promise(r => setTimeout(r, 5000));
       }
+    }
+
+    // ── Synthesis: independent determination via Claude ──
+    console.log(`  Synthesizing determination via Claude...`);
+    try {
+      const synthesisPrompt = `You are an independent judge reviewing a structured multi-agent discussion.
+
+TOPIC: ${topic}
+
+The discussion had ${maxRounds} rounds across three phases:
+- DIVERGE: Agents generated distinct perspectives
+- CHALLENGE: Agents stress-tested each other's claims
+- CONVERGE: Agents stated final positions
+
+Here is the full discussion:
+
+${history.map(m => `[${m.phase?.toUpperCase()} R${m.round}] ${m.agent_name}: ${m.content}`).join('\n\n')}
+
+---
+
+Write a DETERMINATION — a clear, actionable synthesis of this discussion. Include:
+1. **Core question answered**: What did this discussion actually resolve?
+2. **Strongest position**: Which perspective survived scrutiny best, and why?
+3. **Key tensions unresolved**: What genuine disagreements remain?
+4. **Recommended action**: Based on this discussion, what should the participants actually do?
+
+Be direct. Under 400 words. This is a decision document, not a summary.`;
+
+      const synthesis = await callLLM('anthropic', 'claude-haiku-4-5-20251001', synthesisPrompt, 'Produce the determination.');
+
+      await db.from('ark_messages').insert({
+        session_id: sessionId,
+        agent_name: 'Arbiter',
+        agent_role: 'Independent synthesis — final determination',
+        round: maxRounds + 1,
+        phase: 'synthesis',
+        content: synthesis.content,
+        tokens_used: synthesis.tokens,
+        model: 'claude-haiku-4-5-20251001',
+      });
+
+      history.push({ agent_name: 'Arbiter', content: synthesis.content, round: maxRounds + 1, phase: 'synthesis' });
+      console.log(`  ✓ Determination posted by Arbiter`);
+    } catch (synthErr) {
+      console.error(`  ⚠ Synthesis failed (session still completed): ${synthErr instanceof Error ? synthErr.message : 'Unknown'}`);
     }
 
     await db.from('ark_sessions').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', sessionId);
@@ -210,10 +262,12 @@ async function runSession(sessionId: string): Promise<void> {
   }
 }
 
-// ── Ollama model sync ──
+// ── Model sync (Ollama + MLX) ──
 
 const MODEL_SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutes
 let lastModelSync = 0;
+
+const MLX_BASE = (process.env.MLX_BASE_URL || 'http://localhost:8080/v1').trim();
 
 async function syncOllamaModels() {
   try {
@@ -231,11 +285,61 @@ async function syncOllamaModels() {
       updated_at: new Date().toISOString(),
     }, { onConflict: 'key' });
 
-    console.log(`  Models synced: ${models.join(', ')}`);
-    lastModelSync = Date.now();
+    console.log(`  Ollama models synced: ${models.join(', ')}`);
   } catch (err) {
-    console.error('Model sync error:', err);
+    console.error('Ollama model sync error:', err);
   }
+}
+
+async function syncMlxModels() {
+  try {
+    const res = await fetch(`${MLX_BASE}/models`, { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) return;
+    const data = await res.json();
+    const loaded: string[] = (data.data || []).map((m: { id: string }) => m.id);
+
+    // Known MLX models available locally (cached on disk)
+    const knownModels = [
+      'mlx-community/Qwen3.5-9B-MLX-4bit',
+      'mlx-community/Qwen3.5-4B-4bit',
+      'mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit',
+      'mlx-community/Qwen3-14B-4bit',
+      'mlx-community/Meta-Llama-3.1-8B-Instruct-4bit',
+    ];
+
+    // Merge: loaded model first, then known models (deduped)
+    const models = Array.from(new Set([...loaded, ...knownModels]));
+
+    await db.from('conn_state').upsert({
+      key: 'ark_mlx_models',
+      value: models,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'key' });
+
+    console.log(`  MLX models synced: ${loaded.length} loaded, ${models.length} total`);
+  } catch {
+    // MLX server not running — store known models anyway so UI can show them
+    const knownModels = [
+      'mlx-community/Qwen3.5-9B-MLX-4bit',
+      'mlx-community/Qwen3.5-4B-4bit',
+      'mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit',
+      'mlx-community/Qwen3-14B-4bit',
+      'mlx-community/Meta-Llama-3.1-8B-Instruct-4bit',
+    ];
+
+    await db.from('conn_state').upsert({
+      key: 'ark_mlx_models',
+      value: knownModels,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'key' });
+
+    console.log('  MLX server not reachable — stored known models');
+  }
+}
+
+async function syncAllModels() {
+  await Promise.all([syncOllamaModels(), syncMlxModels()]);
+  lastModelSync = Date.now();
 }
 
 // ── Main loop ──
@@ -244,10 +348,11 @@ async function main() {
   console.log(`\n⚡ Ark Runner started`);
   console.log(`  Supabase:   ${process.env.NEXT_PUBLIC_SUPABASE_URL}`);
   console.log(`  Ollama:     ${OLLAMA_BASE}`);
+  console.log(`  MLX:        ${MLX_BASE}`);
   console.log(`  Claude Max: via claude -p CLI (no API key)`);
   console.log(`  Polling every ${POLL_INTERVAL / 1000}s\n`);
 
-  await syncOllamaModels();
+  await syncAllModels();
 
   while (true) {
     try {
@@ -297,7 +402,7 @@ async function main() {
 
     // Periodic model sync
     if (Date.now() - lastModelSync > MODEL_SYNC_INTERVAL) {
-      await syncOllamaModels();
+      await syncAllModels();
     }
 
     await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
