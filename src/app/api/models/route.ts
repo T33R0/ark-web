@@ -6,16 +6,18 @@ export async function GET() {
 
   const { data } = await supabase
     .from("conn_state")
-    .select("value")
-    .eq("key", "ark_ollama_models")
-    .single();
+    .select("key, value")
+    .in("key", ["ark_ollama_models", "ark_mlx_models"]);
 
-  if (data?.value) {
-    const models = typeof data.value === "string" ? JSON.parse(data.value) : data.value;
-    if (Array.isArray(models) && models.length > 0) {
-      return NextResponse.json(models);
-    }
+  const result: Record<string, string[]> = { ollama: ["qwen3:14b"], mlx: [] };
+
+  for (const row of data || []) {
+    const models = typeof row.value === "string" ? JSON.parse(row.value) : row.value;
+    if (!Array.isArray(models) || models.length === 0) continue;
+
+    if (row.key === "ark_ollama_models") result.ollama = models;
+    if (row.key === "ark_mlx_models") result.mlx = models;
   }
 
-  return NextResponse.json(["qwen3:14b"]);
+  return NextResponse.json(result);
 }

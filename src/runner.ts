@@ -361,6 +361,7 @@ async function main() {
         .from('ark_sessions')
         .select('id, topic')
         .eq('status', 'pending')
+        .neq('source', 'blindspot')
         .order('created_at')
         .limit(1);
 
@@ -374,8 +375,9 @@ async function main() {
       // Resume stuck sessions (running but no message in 5 min)
       const { data: stuck } = await db
         .from('ark_sessions')
-        .select('id, topic, current_round')
+        .select('id, topic, current_round, started_at')
         .eq('status', 'running')
+        .neq('source', 'blindspot')
         .order('created_at')
         .limit(1);
 
@@ -389,7 +391,9 @@ async function main() {
           .order('created_at', { ascending: false })
           .limit(1);
 
-        const lastTime = lastMsg?.[0]?.created_at ? new Date(lastMsg[0].created_at).getTime() : 0;
+        const lastTime = lastMsg?.[0]?.created_at
+          ? new Date(lastMsg[0].created_at).getTime()
+          : new Date(s.started_at).getTime();
         if (Date.now() - lastTime > STUCK_THRESHOLD) {
           console.log(`▶ Resuming stuck session: ${s.topic.slice(0, 60)}... (round ${s.current_round})`);
           await runSession(s.id);

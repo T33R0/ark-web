@@ -25,14 +25,26 @@ const DEFAULT_AGENT: Agent = {
   provider: "ollama",
 };
 
+const PROVIDERS = [
+  { value: "ollama", label: "Ollama" },
+  { value: "mlx", label: "MLX" },
+  { value: "anthropic", label: "Claude" },
+] as const;
+
 export function GroupForm({ initial, onSave, onCancel }: GroupFormProps) {
   const [name, setName] = useState(initial?.name || "");
   const [description, setDescription] = useState(initial?.description || "");
-  const [availableModels, setAvailableModels] = useState<string[]>(["qwen3:14b"]);
+  const [modelsByProvider, setModelsByProvider] = useState<Record<string, string[]>>({
+    ollama: ["qwen3:14b"],
+    mlx: [],
+  });
 
   useEffect(() => {
-    fetch("/api/models").then((r) => r.json()).then(setAvailableModels);
+    fetch("/api/models")
+      .then((r) => r.json())
+      .then((data: Record<string, string[]>) => setModelsByProvider(data));
   }, []);
+
   const [agents, setAgents] = useState<Agent[]>(
     initial?.agents?.length ? initial.agents : [{ ...DEFAULT_AGENT, color: AGENT_COLORS[0] }]
   );
@@ -51,8 +63,23 @@ export function GroupForm({ initial, onSave, onCancel }: GroupFormProps) {
 
   const updateAgent = (index: number, field: keyof Agent, value: string) => {
     const updated = [...agents];
-    updated[index] = { ...updated[index], [field]: value };
+    if (field === "provider") {
+      const providerModels = modelsByProvider[value] || [];
+      const currentModel = updated[index].model;
+      updated[index] = {
+        ...updated[index],
+        provider: value as Agent["provider"],
+        model: providerModels.includes(currentModel) ? currentModel : (providerModels[0] || ""),
+      };
+    } else {
+      updated[index] = { ...updated[index], [field]: value };
+    }
     setAgents(updated);
+  };
+
+  const getModelsForAgent = (agent: Agent): string[] => {
+    if (agent.provider === "anthropic") return ["claude-sonnet-4-6", "claude-opus-4-6"];
+    return modelsByProvider[agent.provider] || [];
   };
 
   const handleSave = async () => {
@@ -142,12 +169,14 @@ export function GroupForm({ initial, onSave, onCancel }: GroupFormProps) {
                   </div>
                   <div>
                     <Label className="text-xs">Provider</Label>
-                    <Select value="ollama" onValueChange={(v) => updateAgent(i, "provider", v)}>
+                    <Select value={agent.provider} onValueChange={(v) => updateAgent(i, "provider", v)}>
                       <SelectTrigger className="mt-1">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="ollama">Ollama</SelectItem>
+                        {PROVIDERS.map((p) => (
+                          <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -158,7 +187,7 @@ export function GroupForm({ initial, onSave, onCancel }: GroupFormProps) {
                         <SelectValue placeholder="Select model..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {availableModels.map((m) => (
+                        {getModelsForAgent(agent).map((m) => (
                           <SelectItem key={m} value={m}>{m}</SelectItem>
                         ))}
                       </SelectContent>
